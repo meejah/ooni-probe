@@ -158,6 +158,7 @@ def getTestDetails(options):
 class OReporter(object):
     def __init__(self, cmd_line_options):
         self.cmd_line_options = dict(cmd_line_options)
+        self.created = defer.Deferred()
 
     def createReport(self, options):
         """
@@ -247,6 +248,8 @@ class YAMLReporter(OReporter):
 
         self.writeReportEntry(test_details)
 
+        self.created.callback(None)
+
     def finish(self):
         self._stream.close()
 
@@ -278,7 +281,6 @@ class OONIBReporter(OReporter):
 
         OReporter.__init__(self, cmd_line_options)
 
-    @defer.inlineCallbacks
     def writeReportEntry(self, entry):
         log.debug("Writing report with OONIB reporter")
         content = '---\n'
@@ -296,14 +298,7 @@ class OONIBReporter(OReporter):
 
         bodyProducer = StringProducer(json.dumps(request))
 
-        try:
-            response = yield self.agent.request("PUT", url,
-                                bodyProducer=bodyProducer)
-        except:
-            # XXX we must trap this in the runner and make sure to report the
-            # data later.
-            log.err("Error in writing report entry")
-            raise OONIBReportUpdateError
+        return self.agent.request("PUT", url, bodyProducer=bodyProducer)
 
     @defer.inlineCallbacks
     def createReport(self, options):
@@ -372,4 +367,6 @@ class OONIBReporter(OReporter):
         self.report_id = parsed_response['report_id']
         self.backend_version = parsed_response['backend_version']
         log.debug("Created report with id %s" % parsed_response['report_id'])
+
+        self.created.callback(None)
 
