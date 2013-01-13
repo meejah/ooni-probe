@@ -13,7 +13,7 @@ class NoTestCasesFound(Exception):
     pass
 
 class NetTest(object):
-    director = None
+    measurementManager = None
     method_prefix = 'test'
 
     def __init__(self, net_test_file, options, report):
@@ -26,15 +26,15 @@ class NetTest(object):
         """
         self.options = options
         self.report = report
-
         self.test_cases = self.loadNetTest(net_test_file)
-        self.setUpNetTestCases()
 
     def start(self):
         """
+        Set up tests and start running.
         Start tests and generate measurements.
         """
-        raise NotImplementedError
+        self.setUpNetTestCases()
+        self.measurementManager.schedule(self.generateMeasurements())
 
     def loadNetTest(self, net_test_file):
         """
@@ -142,6 +142,7 @@ class NetTest(object):
             if test_instance.requiresRoot:
                 checkForRoot()
             test_instance._checkRequiredOptions()
+            test_instance._checkValidOptions()
 
             klass.inputs = test_instance.getInputProcessor()
 
@@ -269,31 +270,40 @@ class NetTestCase(object):
 
     def getInputProcessor(self):
         """
-        This method must be called afterr
+        This method must be called after all options are validated by
+        _checkValidOptions and _checkRequiredOptions, which ensure that
+        if the inputFile is a required option it will be present.
         """
         if self.inputFile:
-            self.inputFilename = self.localOptions[self.inputFile[0]]
+            if self.inputFile[0] in self.localOptions:
+                self.inputFilename = self.localOptions[self.inputFile[0]]
 
-            inputProcessor = self.inputProcessor
-            inputFilename = self.inputFilename
+                inputProcessor = self.inputProcessor
+                inputFilename = self.inputFilename
 
-            class inputProcessorIterator(object):
-                """
-                Here we convert the input processor generator into an iterator
-                so that we can run it twice.
-                """
-                def __iter__(self):
-                    return inputProcessor(inputFilename)
+                class inputProcessorIterator(object):
+                    """
+                    Here we convert the input processor generator into an iterator
+                    so that we can run it twice.
+                    """
+                    def __iter__(self):
+                        return inputProcessor(inputFilename)
 
-            return inputProcessorIterator()
+                return inputProcessorIterator()
 
         return iter(())
+
+    def _checkValidOptions(self):
+        for option in self.localOptions:
+            if option not in self.usageOptions():
+                if not self.inputFile or option not in self.inputFile:
+                    raise InvalidOption
 
     def _checkRequiredOptions(self):
         for required_option in self.requiredOptions:
             log.debug("Checking if %s is present" % required_option)
-            if not self.localOptions[required_option]:
-                raise usage.UsageError("%s not specified!" % required_option)
+            if required_option not in self.localOptions:
+               raise MissingRequiredOption
 
     def __repr__(self):
         return "<%s inputs=%s>" % (self.__class__, self.inputs)
