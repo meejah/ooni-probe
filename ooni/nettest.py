@@ -4,7 +4,7 @@ from twisted.trial.runner import filenameToModule
 from twisted.python import usage, reflect
 
 from ooni.tasks import Measurement
-from ooni.utils import log
+from ooni.utils import log, checkForRoot, NotRootError
 
 from inspect import getmembers
 from StringIO import StringIO
@@ -13,22 +13,25 @@ class NetTest(object):
     director = None
     method_prefix = 'test'
 
-    def __init__(self, net_test_file, inputs, options, report):
+    def __init__(self, net_test_file, options, report):
         """
         net_test_file:
             is a file object containing the test to be run.
 
-        inputs:
-            is a generator containing the inputs to the net test.
-
         options:
             is a dict containing the options to be passed to the net test.
         """
-        self.test_cases = self.loadNetTest(net_test_file)
-        self.inputs = inputs
         self.options = options
-
         self.report = report
+
+        self.test_cases = self.loadNetTest(net_test_file)
+        self.setUpNetTestCases()
+
+    def start(self):
+        """
+        Start tests and generate measurements.
+        """
+        raise NotImplementedError
 
     def loadNetTest(self, net_test_object):
         """
@@ -52,11 +55,16 @@ class NetTest(object):
         """
         try:
             if os.path.isfile(net_test_object):
-                return self._loadNetTestFile(net_test_object)
+                test_cases = self._loadNetTestFile(net_test_object)
         except TypeError:
             if isinstance(net_test_object, StringIO) or \
                 isinstance(net_test_object, str):
-                return self._loadNetTestString(net_test_object)
+                test_cases = self._loadNetTestString(net_test_object)
+
+        if not test_cases:
+            raise NoTestCasesFound
+
+        return test_cases
 
     def _loadNetTestString(self, net_test_string):
         """
@@ -104,14 +112,30 @@ class NetTest(object):
         This is a generator that yields measurements and sets their timeout
         value and their netTest attribute.
         """
-        for test_input in self.inputs:
-            for test_class, test_method in self.test_cases:
-                measurement = Measurement(test_class, test_method, test_input)
+        for test_class, test_method in self.test_cases:
+            for test_input in test_class.inputs:
+                measurement = Measurement(test_class, test_method,
+                        test_input, self)
                 measurement.netTest = self
                 yield measurement
 
-class NoPostProcessor(Exception):
-    pass
+    def setUpNetTestCases(self):
+        """
+        Call processTest and processOptions methods of each NetTestCase
+        """
+        test_classes = set([])
+        for test_class, test_method in self.test_cases:
+            test_classes.add(test_class)
+
+        for klass in test_classes:
+            klass.localOptions = self.options
+
+            test_instance = klass()
+            if test_instance.requiresRoot:
+                checkForRoot()
+            test_instance._checkRequiredOptions()
+
+            klass.inputs = test_instance.getInputProcessor()
 
 class NetTestCase(object):
     """
@@ -235,16 +259,16 @@ class NetTestCase(object):
         else:
             pass
 
-    def _checkRequiredOptions(self):
-        for required_option in self.requiredOptions:
-            log.debug("Checking if %s is present" % required_option)
-            if not self.localOptions[required_option]:
-                raise usage.UsageError("%s not specified!" % required_option)
+    def getInputProcessor(self):
+        """
+        This method must be called afterr
+        """
+        if self.inputFile:
+            self.inputFilename = self.localOptions[self.inputFile[0]]
 
-    def _processOptions(self):
-        if self.inputFilename:
             inputProcessor = self.inputProcessor
             inputFilename = self.inputFilename
+
             class inputProcessorIterator(object):
                 """
                 Here we convert the input processor generator into an iterator
@@ -252,12 +276,25 @@ class NetTestCase(object):
                 """
                 def __iter__(self):
                     return inputProcessor(inputFilename)
-            self.inputs = inputProcessorIterator()
 
-        return {'inputs': self.inputs,
-                'name': self.name, 'version': self.version
-               }
+            return inputProcessorIterator()
+
+        return iter(())
+
+    def _checkRequiredOptions(self):
+        for required_option in self.requiredOptions:
+            log.debug("Checking if %s is present" % required_option)
+            if not self.localOptions[required_option]:
+                raise usage.UsageError("%s not specified!" % required_option)
 
     def __repr__(self):
         return "<%s inputs=%s>" % (self.__class__, self.inputs)
 
+class FailureToLoadNetTest(Exception):
+    pass
+class NoPostProcessor(Exception):
+    pass
+class InvalidOption(Exception):
+    pass
+class MissingRequiredOption(Exception):
+    pass
