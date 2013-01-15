@@ -5,7 +5,7 @@ from ooni.reporter import Report, YAMLReporter, OONIBReporter
 from ooni.managers import ReportEntryManager, TaskManager
 from ooni.nettest import NetTest
 
-from ooni.tasks import TaskMediator, TaskWithTimeout
+from ooni.tasks import TaskWithTimeout
 
 mockReportOptions = {'name':'foo_test', 'version': '0.1'}
 
