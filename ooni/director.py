@@ -78,6 +78,22 @@ class Director(object):
 
         self.failures = []
 
+        self.torControlProtocol = None
+
+    def start(self):
+        if config.privacy.includepcap:
+            log.msg("Starting")
+            if not config.reports.pcap:
+                config.generatePcapFilename()
+            self.startSniffing()
+
+        if config.advanced.start_tor:
+            log.msg("Starting Tor...")
+            d = self.startTor()
+        else:
+            d = defer.succeed(None)
+        return d
+
     @property
     def measurementSuccessRatio(self):
         if self.totalMeasurements == 0:
@@ -146,7 +162,7 @@ class Director(object):
     def netTestDone(self, result, net_test):
         self.activeNetTests.remove(net_test)
 
-    def startNetTest(self, net_test_loader, options):
+    def startNetTest(self, _, net_test_loader):
         """
         Create the Report for the NetTest and start the report NetTest.
 
@@ -154,14 +170,11 @@ class Director(object):
             net_test_loader:
                 an instance of :class:ooni.nettest.NetTestLoader
 
-            options:
-                is a dict containing the options to be passed to the chosen net
-                test.
+            _: #XXX very dirty hack
         """
         report = Report(self.reporters, self.reportEntryManager)
 
-        net_test = NetTest(net_test_loader, options, report)
-        net_test.setUpNetTestCases()
+        net_test = NetTest(net_test_loader, report)
         net_test.director = self
 
         self.measurementManager.schedule(net_test.generateMeasurements())
