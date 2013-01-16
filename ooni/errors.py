@@ -114,3 +114,5 @@ def failureToString(failure):
 
     return string
 
+class InvalidOONIBCollectorAddress(Exception):
+    pass
