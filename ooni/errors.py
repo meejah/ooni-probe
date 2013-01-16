@@ -116,3 +116,7 @@ def failureToString(failure):
 
 class InvalidOONIBCollectorAddress(Exception):
     pass
+
+class AllReportersFailed(Exception):
+    pass
+
