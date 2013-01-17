@@ -114,6 +114,12 @@ def failureToString(failure):
 
     return string
 
+class InvalidOONIBCollectorAddress(Exception):
+    pass
+
+class AllReportersFailed(Exception):
+    pass
+
 class DirectorException(Exception):
     pass
 

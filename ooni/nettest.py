@@ -9,6 +9,8 @@ from ooni.utils import log, checkForRoot, NotRootError
 from ooni import config
 from ooni import otime
 
+from ooni.errors import AllReportersFailed
+
 from inspect import getmembers
 from StringIO import StringIO
 
@@ -60,13 +62,13 @@ class NetTestLoader(object):
             client_geodata['countrycode'] = None
 
         test_details = {'start_time': otime.utcTimeNow(),
-                        'probe_asn': client_geodata['asn'],
-                        'probe_cc': client_geodata['countrycode'],
-                        'probe_ip': client_geodata['ip'],
-                        'test_name': self.testName,
-                        'test_version': self.testVersion,
-                        'software_name': 'ooniprobe',
-                        'software_version': software_version
+            'probe_asn': client_geodata['asn'],
+            'probe_cc': client_geodata['countrycode'],
+            'probe_ip': client_geodata['ip'],
+            'test_name': self.testName,
+            'test_version': self.testVersion,
+            'software_name': 'ooniprobe',
+            'software_version': software_version
         }
         return test_details
 
@@ -270,16 +272,32 @@ class NetTest(object):
 
         self.state = NetTestState(self.done)
 
-    def doneReport(self, result):
+    def doneReport(self, report_results):
         """
         This will get called every time a measurement is done and therefore a
         measurement is done.
 
         The state for the NetTest is informed of the fact that another task has
         reached the done state.
+
+        Args:
+            report_results:
+                is the list of tuples returned by the self.report.write
+                :class:twisted.internet.defer.DeferredList
+
+        Returns:
+            the same deferred list results
         """
+        for report_status, report_result in report_results:
+            if report_status == False:
+                self.director.reporterFailed(report_result, self)
+
         self.state.taskDone()
-        return result
+
+        if len(self.report.reporters) == 0:
+            raise NoMoreReporters
+
+        return report_results
 
     def makeMeasurement(self, test_class, test_method, test_input=None):
         """
@@ -304,9 +322,8 @@ class NetTest(object):
         measurement.done.addCallback(self.director.measurementSucceeded)
         measurement.done.addErrback(self.director.measurementFailed, measurement)
 
-        measurement.done.addCallback(self.report.write)
-        measurement.done.addErrback(self.director.reportEntryFailed)
-
+        measurement.done.addBoth(self.report.write)
+        # here we are dealing with a deferred list
         measurement.done.addBoth(self.doneReport)
         return measurement
 
