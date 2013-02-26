@@ -8,6 +8,8 @@ def get_requirements():
     with open('oonib/requirements.txt', 'r') as f:
         requirements += f.read().splitlines()
 
+    requirements = filter(lambda x: not x.startswith('#') and not x.startswith('http'), requirements)
+
     # For urls such as https://hg.secdev.org/scapy/archive/tip.zip#egg=scapy in
     # requirements.txt we need to add the package name to install_requires and
     # the entire url to dependency_links. That way setuptools will be able to
@@ -31,7 +33,7 @@ setup(
     version="0.6",
     url="http://ooni.nu/",
     packages=find_packages(),
-    scripts=["bin/canary", "bin/oonib", "bin/ooniprobe"],
+    scripts=["bin/oonib", "bin/ooniprobe"],
     install_requires=install_requires,
     dependency_links=dependency_links,
 )
